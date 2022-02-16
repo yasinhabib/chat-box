@@ -1,0 +1,9 @@
+apps:
+  - name: chatbox-consumer
+    script: artisan
+    exec_mode: fork
+    detached: true
+    interpreter: php
+    instances: 1
+    args:
+      - chat:start
