@@ -26,4 +26,6 @@ Route::group(['namespace' => 'App\Http\Controllers'], function () {
         Route::get('get-all-users', 'UserController@getAllUser');
         Route::post('publish', 'ChatController@publish');
     });
+
+    Route::get('test-protobuf','ChatController@test');
 });
