@@ -29,11 +29,11 @@ class ChatController extends Controller
     }
 
     public function getAllChat($target_user_id){
-        // $user = JWTAuth::user();
+        $user = JWTAuth::user();
 
-        $chats = Chat::where(function ($query) {
-            $query->where('user_id',2)
-                  ->orWhere('target_user_id',2);
+        $chats = Chat::where(function ($query) use($user) {
+            $query->where('user_id',$user->id)
+                  ->orWhere('target_user_id',$user->id);
         })->where(function ($query) use ($target_user_id) {
             $query->where('user_id',$target_user_id)
                   ->orWhere('target_user_id',$target_user_id);
@@ -43,16 +43,20 @@ class ChatController extends Controller
         foreach($chats as $chat){
             $chat->user_id = intval($chat->user_id);
             $chat->target_user_id = intval($chat->target_user_id);
-            $chat->is_sender = $chat->user_id == 2 ? true : false;
+            $chat->is_sender = $chat->user_id == $user->id ? true : false;
 
             $getMessage = new ChatMessage\getMessage();
             $getMessage->setId($chat->id);
             $getMessage->setUserId($chat->user_id );
             $getMessage->setMessage($chat->message);
             $getMessage->setTargetUserId($chat->target_user_id);
-            $getMessage->setIsSender($chat->isSender);
-            $getMessage->setCreatedAt($chat->created_at);
-            $getMessage->setUpdateAt($chat->update_at);
+            if($chat->created_at){
+                $getMessage->setCreatedAt(strtotime($chat->created_at));
+            }
+            if($chat->update_at){
+                $getMessage->setUpdateAt(strtotime($chat->update_at));
+            }
+            $getMessage->setIsSender($chat->is_sender);
 
             $arrListMessage[] = $getMessage;
         }        
@@ -60,18 +64,23 @@ class ChatController extends Controller
         $listMessage = new ChatMessage\listMessage();
         $listMessage->setMessage($arrListMessage);
 
-        return $listMessage->serializeToString();
+        $serializedMessage = $listMessage->serializeToString();
+        $byte_array = unpack('C*',$serializedMessage);
+        $byte_array = array_values($byte_array);
+        return $byte_array;
     }
 
     public function consume(){
         Amqp::consume('chat-message', function ($message, $resolver) {
-            $response = json_decode($message->body);
+            $postMessage = new ChatMessage\postMessage();
+            $postMessage->mergeFromString($message->body);
             
             $chat = new Chat;
-            $chat->user_id = $response->user_id;
-            $chat->message = $response->message;
-            $chat->target_user_id = $response->target_user_id;
+            $chat->user_id = $postMessage->getUserId();
+            $chat->message = $postMessage->getMessage();
+            $chat->target_user_id = $postMessage->getTargetUserId();
             $chat->save();
+
          
             $resolver->acknowledge($message);
 
@@ -106,28 +115,29 @@ class ChatController extends Controller
 
     public function test(){
         $message = [
-            'user_id' => 1,
             'message' => 'test',
-            'target_user_id' => 2
+            'target_user_id' => 2,
+            'user_id' => 1
         ];
 
         $postMessage = new ChatMessage\postMessage();
-        $postMessage->setUserId($message['user_id']);
-        $postMessage->setMessage($message['message']);
-        $postMessage->setTargetUserId($message['target_user_id']);
+        $postMessage->mergeFromJsonString(\json_encode($message));
+        // $postMessage->setUserId($message['user_id']);
+        // $postMessage->setMessage($message['message']);
+        // $postMessage->setTargetUserId($message['target_user_id']);
+        $serializedMessage = $postMessage->serializeToString();
 
-        $streamData;
-        $dataString = $postMessage->serializeToJsonString();
+        $byte_array = unpack('C*',$serializedMessage);
+        $byte_array = array_values($byte_array);
+        return $byte_array;
 
-        dd($dataString);
+        // $dataBinary = new ChatMessage\postMessage($postMessage);
+        // $userId = $dataBinary->getUserId();
+        // $message = $dataBinary->getMessage();
+        // $target_user_id = $dataBinary->getTargetUserId();
 
-        $dataBinary = new ChatMessage\postMessage($postMessage);
-        $userId = $dataBinary->getUserId();
-        $message = $dataBinary->getMessage();
-        $target_user_id = $dataBinary->getTargetUserId();
-
-        echo $userId;
-        echo $message;
-        echo $target_user_id;
+        // echo $userId;
+        // echo $message;
+        // echo $target_user_id;
     }
 }
